@@ -553,12 +553,12 @@ def run_gui():
     bar.pack_propagate(False)
 
     title = tk.Label(bar, text="◆  Claude Usage", bg=C_BG, fg=C_TEXT,
-                     font=("Segoe UI Semibold", 11))
+                    font=("Segoe UI Semibold", 12))
     title.pack(side="left", padx=12)
 
     def mk_btn(parent, txt, cmd, fg=C_SUB):
         b = tk.Label(parent, text=txt, bg=C_BG, fg=fg,
-                     font=("Segoe UI", 11), cursor="hand2", padx=7)
+                     font=("Segoe UI", 12), cursor="hand2", padx=7)
         b.bind("<Button-1>", lambda e: cmd())
         b.bind("<Enter>", lambda e: b.configure(fg=C_TEXT))
         b.bind("<Leave>", lambda e: b.configure(
@@ -609,12 +609,12 @@ def run_gui():
         f.grid(row=0, column=col, sticky="nsew", padx=3)
         cards.columnconfigure(col, weight=1)
         tk.Label(f, text=label, bg=C_SURFACE, fg=C_SUB,
-                 font=("Segoe UI", 7)).pack(anchor="w", padx=8, pady=(6, 0))
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=8, pady=(6, 0))
         val = tk.Label(f, text="-", bg=C_SURFACE, fg=color,
-                       font=("Segoe UI Semibold", 13))
+                       font=("Segoe UI Semibold", 15))
         val.pack(anchor="w", padx=8, pady=(0, 4))
         sub = tk.Label(f, text="", bg=C_SURFACE, fg=C_FAINT,
-                       font=("Segoe UI", 7))
+                       font=("Segoe UI", 8))
         sub.pack(anchor="w", padx=8, pady=(0, 6))
         return val, sub
 
@@ -626,10 +626,10 @@ def run_gui():
     chart_hdr = tk.Frame(root, bg=C_BG)
     chart_hdr.pack(fill="x", padx=14, pady=(4, 0))
     chart_title = tk.Label(chart_hdr, bg=C_BG, fg=C_TEXT,
-                           font=("Segoe UI Semibold", 9))
+                           font=("Segoe UI Semibold", 10))
     chart_title.pack(side="left")
     chart_hint = tk.Label(chart_hdr, text="right-click: options",
-                          bg=C_BG, fg=C_FAINT, font=("Segoe UI", 7))
+                          bg=C_BG, fg=C_FAINT, font=("Segoe UI", 8))
     chart_hint.pack(side="right")
 
     CH_W, CH_H = 352, 132
@@ -639,7 +639,7 @@ def run_gui():
 
     # ---- model breakdown -------------------------------------------------
     tk.Label(root, text="BY MODEL", bg=C_BG, fg=C_SUB,
-             font=("Segoe UI", 7)).pack(anchor="w", padx=14, pady=(2, 0))
+             font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(2, 0))
     models_box = tk.Frame(root, bg=C_BG)
     models_box.pack(fill="x", padx=14, pady=(2, 4))
 
@@ -648,12 +648,12 @@ def run_gui():
     codex_hdr_row = tk.Frame(root, bg=C_BG)
     codex_hdr_row.pack(fill="x", padx=14, pady=(4, 0))
     tk.Label(codex_hdr_row, text="CODEX", bg=C_BG, fg=C_SUB,
-             font=("Segoe UI", 7)).pack(side="left")
+             font=("Segoe UI", 8)).pack(side="left")
     codex_plan_lbl = tk.Label(codex_hdr_row, text="", bg=C_BG, fg=C_FAINT,
-                               font=("Segoe UI", 7))
+                               font=("Segoe UI", 8))
     codex_plan_lbl.pack(side="left", padx=(6, 0))
     codex_err_lbl = tk.Label(codex_hdr_row, text="", bg=C_BG, fg=C_RED,
-                              font=("Segoe UI", 7))
+                              font=("Segoe UI", 8))
     codex_err_lbl.pack(side="right")
 
     codex_q = queue.Queue()
@@ -662,17 +662,17 @@ def run_gui():
         row = tk.Frame(root, bg=C_BG)
         row.pack(fill="x", padx=14, pady=(2, 2))
         tk.Label(row, text=label_text, bg=C_BG, fg=C_SUB,
-                 font=("Segoe UI", 7), width=8, anchor="w").pack(side="left")
-        track = tk.Frame(row, bg=C_SURFACE, height=10)
+                 font=("Segoe UI", 8), width=8, anchor="w").pack(side="left")
+        track = tk.Frame(row, bg=C_SURFACE, height=12)
         track.pack(side="left", fill="x", expand=True, padx=(4, 4))
         track.pack_propagate(False)
-        fill = tk.Frame(track, bg=bar_color, height=10)
+        fill = tk.Frame(track, bg=bar_color, height=12)
         fill.place(relwidth=0.0, relheight=1.0)
         pct = tk.Label(row, text="--", bg=C_BG, fg=C_FAINT,
-                       font=("Segoe UI", 7), width=5, anchor="e")
+                       font=("Segoe UI", 8), width=5, anchor="e")
         pct.pack(side="left")
         eta = tk.Label(row, text="", bg=C_BG, fg=C_FAINT,
-                       font=("Segoe UI", 7), width=12, anchor="e")
+                       font=("Segoe UI", 8), width=12, anchor="e")
         eta.pack(side="right")
         return fill, pct, eta
 
@@ -750,17 +750,17 @@ def run_gui():
         row = tk.Frame(root, bg=C_BG)
         row.pack(fill="x", padx=14, pady=(4, 2))
         tk.Label(row, text=label_text, bg=C_BG, fg=C_SUB,
-                 font=("Segoe UI", 7), width=8, anchor="w").pack(side="left")
-        track = tk.Frame(row, bg=C_SURFACE, height=10)
+                 font=("Segoe UI", 8), width=8, anchor="w").pack(side="left")
+        track = tk.Frame(row, bg=C_SURFACE, height=12)
         track.pack(side="left", fill="x", expand=True, padx=(4, 4))
         track.pack_propagate(False)
-        fill = tk.Frame(track, bg=bar_color, height=10)
+        fill = tk.Frame(track, bg=bar_color, height=12)
         fill.place(relwidth=0.0, relheight=1.0)
         pct = tk.Label(row, text="--", bg=C_BG, fg=C_FAINT,
-                       font=("Segoe UI", 7), width=5, anchor="e")
+                       font=("Segoe UI", 8), width=5, anchor="e")
         pct.pack(side="left")
         eta = tk.Label(row, text="--", bg=C_BG, fg=C_FAINT,
-                       font=("Segoe UI", 7), width=12, anchor="e")
+                       font=("Segoe UI", 8), width=12, anchor="e")
         eta.pack(side="right")
         return fill, pct, eta
 
@@ -768,7 +768,7 @@ def run_gui():
     weekly_fill, weekly_pct, weekly_eta = _make_bar_row("WEEKLY", C_MAUVE)
 
     footer = tk.Label(root, text="loading...", bg=C_BG, fg=C_FAINT,
-                      font=("Segoe UI", 7))
+                      font=("Segoe UI", 8))
     footer.pack(side="bottom", pady=(0, 6))
 
     # ---- drawing ---------------------------------------------------------
@@ -809,7 +809,7 @@ def run_gui():
         if vmax > 0:
             chart.create_text(CH_W - 2, pad_t - 2, anchor="ne",
                               text=metric_label(vmax),
-                              fill=C_SUB, font=("Segoe UI", 7))
+                              fill=C_SUB, font=("Segoe UI", 8))
 
         for idx, (dd, d) in enumerate(seq):
             v = metric_of(d)
@@ -825,10 +825,10 @@ def run_gui():
                 chart.create_text(bx + bw / 2, base_y + 8,
                                   text=dd.strftime("%d"),
                                   fill=C_TEXT if is_today else C_FAINT,
-                                  font=("Segoe UI", 6))
+                                  font=("Segoe UI", 7))
         if vmax == 0:
             chart.create_text(CH_W / 2, CH_H / 2, text="no usage in range",
-                              fill=C_FAINT, font=("Segoe UI", 9))
+                              fill=C_FAINT, font=("Segoe UI", 10))
 
     def draw_models(agg):
         for w in models_box.winfo_children():
@@ -838,25 +838,25 @@ def run_gui():
         total_cost = agg["totals"]["cost"] or 1.0
         if not order:
             tk.Label(models_box, text="no model data", bg=C_BG, fg=C_FAINT,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI", 9)).pack(anchor="w")
             return
         for fam, v in order:
             row = tk.Frame(models_box, bg=C_BG)
             row.pack(fill="x", pady=2)
             col = MODEL_COLORS.get(fam, C_PEACH)
             tk.Label(row, text="●", bg=C_BG, fg=col,
-                     font=("Segoe UI", 9)).pack(side="left")
+                     font=("Segoe UI", 10)).pack(side="left")
             tk.Label(row, text=fam, bg=C_BG, fg=C_TEXT,
-                     font=("Segoe UI", 8), width=7, anchor="w").pack(
+                     font=("Segoe UI", 9), width=7, anchor="w").pack(
                 side="left", padx=(2, 6))
-            track = tk.Frame(row, bg=C_SURFACE, height=10)
+            track = tk.Frame(row, bg=C_SURFACE, height=12)
             track.pack(side="left", fill="x", expand=True, padx=(0, 6))
             track.pack_propagate(False)
             frac = max(0.02, v["cost"] / total_cost)
-            fill = tk.Frame(track, bg=col, height=10)
+            fill = tk.Frame(track, bg=col, height=12)
             fill.place(relwidth=frac, relheight=1)
             tk.Label(row, text=f'{fmt_cost(v["cost"])}', bg=C_BG, fg=C_SUB,
-                     font=("Segoe UI", 8), width=8, anchor="e").pack(
+                     font=("Segoe UI", 9), width=8, anchor="e").pack(
                 side="right")
 
     def render(agg):
