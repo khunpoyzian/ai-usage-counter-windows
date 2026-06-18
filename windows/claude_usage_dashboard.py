@@ -21,6 +21,7 @@ import urllib.request
 
 LOG_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".claude_usage_dashboard.json")
+CODEX_AUTH_FILE = os.path.join(os.path.expanduser("~"), ".codex", "auth.json")
 
 # USD per 1,000,000 tokens. Estimates only - not official billing.
 PRICING = {
@@ -55,9 +56,8 @@ MODEL_COLORS = {
 # --------------------------------------------------------------------------
 # Codex (ChatGPT) usage
 # --------------------------------------------------------------------------
-# Auth: paste __Secure-next-auth.session-token from browser DevTools cookies
-# into the "codex_session_token" key in SETTINGS_FILE (right-click to set).
-# Chrome v127+ App-Bound Encryption prevents automated extraction.
+# Auth: reads Codex login from ~/.codex/auth.json. Manual ChatGPT cookie still
+# works as a fallback via the "codex_session_token" key in SETTINGS_FILE.
 _CODEX_CACHE = {"ts": 0.0, "data": None}
 _CODEX_TTL   = 300  # 5 min
 
@@ -65,20 +65,30 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 
+def _codex_local_access_token() -> str:
+    try:
+        with open(CODEX_AUTH_FILE, "r", encoding="utf-8") as f:
+            return (((json.load(f).get("tokens") or {}).get("access_token")) or "").strip()
+    except Exception:
+        return ""
+
+
 def _codex_fetch_fresh(session_token: str) -> dict:
     hdrs = {
-        "Cookie": f"__Secure-next-auth.session-token={session_token}",
         "User-Agent": _UA,
         "Accept": "application/json",
         "Referer": "https://chatgpt.com/",
     }
-    req = urllib.request.Request("https://chatgpt.com/api/auth/session",
-                                 headers=hdrs)
-    with urllib.request.urlopen(req, timeout=10) as r:
-        sess = json.loads(r.read())
-    access_tok = sess.get("accessToken")
+    access_tok = _codex_local_access_token()
+    if not access_tok and session_token:
+        hdrs["Cookie"] = f"__Secure-next-auth.session-token={session_token}"
+        req = urllib.request.Request("https://chatgpt.com/api/auth/session",
+                                     headers=hdrs)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            sess = json.loads(r.read())
+        access_tok = sess.get("accessToken")
     if not access_tok:
-        return {"error": "auth expired - refresh token"}
+        return {"error": "no Codex auth - run codex login"}
 
     hdrs2 = dict(hdrs)
     hdrs2["Authorization"] = f"Bearer {access_tok}"
@@ -152,10 +162,7 @@ def _codex_fetch_fresh(session_token: str) -> dict:
 
 
 def codex_fetch(session_token: str) -> dict:
-    """Cached fetch. session_token = '' means not configured."""
-    if not session_token:
-        return {"error": "no token - right-click: Set Codex token",
-                "session_pct": None, "weekly_pct": None}
+    """Cached fetch. Empty session_token uses ~/.codex/auth.json."""
     now = time.time()
     if now - _CODEX_CACHE["ts"] < _CODEX_TTL and _CODEX_CACHE["data"] is not None:
         return _CODEX_CACHE["data"]
@@ -954,7 +961,8 @@ def run_gui():
     def set_codex_token():
         import tkinter.simpledialog as sd
         msg = (
-            "Paste __Secure-next-auth.session-token from ChatGPT.\n\n"
+            "Optional fallback. Usually this uses ~/.codex/auth.json automatically.\n\n"
+            "Paste __Secure-next-auth.session-token from ChatGPT if auto auth fails.\n\n"
             "How: chatgpt.com -> F12 -> Application -> Cookies\n"
             "-> .chatgpt.com -> __Secure-next-auth.session-token\n"
             "(concatenate .0 + .1 if split)"
@@ -989,9 +997,14 @@ def run_gui():
                 label=f'Range: {dval} days{"  v" if state["days"] == dval else ""}',
                 command=lambda d=dval: set_days(d))
         menu.add_separator()
-        has_tok = bool(settings.get("codex_session_token"))
+        if _codex_local_access_token():
+            auth_state = "auto"
+        elif settings.get("codex_session_token"):
+            auth_state = "manual  v"
+        else:
+            auth_state = "missing"
         menu.add_command(
-            label=f'Codex token: {"set  v" if has_tok else "not set"}',
+            label=f"Codex auth: {auth_state}",
             command=set_codex_token)
         menu.add_separator()
         menu.add_command(label="Quit", command=lambda: (persist(),
