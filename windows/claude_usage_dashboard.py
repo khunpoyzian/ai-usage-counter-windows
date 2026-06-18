@@ -17,6 +17,7 @@ import glob
 import queue
 import threading
 import datetime as dt
+import urllib.request
 
 LOG_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".claude_usage_dashboard.json")
@@ -49,6 +50,122 @@ MODEL_COLORS = {
     "haiku": C_GREEN,
     "other": C_PEACH,
 }
+
+
+# --------------------------------------------------------------------------
+# Codex (ChatGPT) usage
+# --------------------------------------------------------------------------
+# Auth: paste __Secure-next-auth.session-token from browser DevTools cookies
+# into the "codex_session_token" key in SETTINGS_FILE (right-click to set).
+# Chrome v127+ App-Bound Encryption prevents automated extraction.
+_CODEX_CACHE = {"ts": 0.0, "data": None}
+_CODEX_TTL   = 300  # 5 min
+
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+
+def _codex_fetch_fresh(session_token: str) -> dict:
+    hdrs = {
+        "Cookie": f"__Secure-next-auth.session-token={session_token}",
+        "User-Agent": _UA,
+        "Accept": "application/json",
+        "Referer": "https://chatgpt.com/",
+    }
+    req = urllib.request.Request("https://chatgpt.com/api/auth/session",
+                                 headers=hdrs)
+    with urllib.request.urlopen(req, timeout=10) as r:
+        sess = json.loads(r.read())
+    access_tok = sess.get("accessToken")
+    if not access_tok:
+        return {"error": "auth expired - refresh token"}
+
+    hdrs2 = dict(hdrs)
+    hdrs2["Authorization"] = f"Bearer {access_tok}"
+    req2 = urllib.request.Request("https://chatgpt.com/backend-api/wham/usage",
+                                  headers=hdrs2)
+    with urllib.request.urlopen(req2, timeout=10) as r2:
+        payload = json.loads(r2.read())
+
+    rl = payload.get("rate_limit") or payload.get("rate_limits") or payload
+    def _win(keys):
+        for k in keys:
+            v = rl.get(k)
+            if isinstance(v, dict):
+                return v
+        return None
+    primary   = _win(["primary_window",   "primary"])
+    secondary = _win(["secondary_window", "secondary"])
+
+    def _pct(d):
+        if not d:
+            return None
+        for k in ("used_percent", "usage_percent", "used_percentage"):
+            if k in d:
+                try:
+                    return float(d[k])
+                except Exception:
+                    pass
+        return None
+
+    def _reset(d):
+        if not d:
+            return None
+        for k in ("resets_in_seconds", "reset_after_seconds", "resets_after_seconds"):
+            if k in d:
+                try:
+                    return time.time() + float(d[k])
+                except Exception:
+                    pass
+        for k in ("resets_at", "reset_at"):
+            if k in d:
+                try:
+                    s = str(d[k]).replace("Z", "+00:00")
+                    return dt.datetime.fromisoformat(s).timestamp()
+                except Exception:
+                    pass
+        return None
+
+    def _dur(d):
+        if not d:
+            return None
+        for k in ("limit_window_seconds", "window_seconds"):
+            if k in d:
+                return float(d[k])
+        mins = d.get("window_minutes")
+        return float(mins) * 60 if mins else None
+
+    sp, wp = _pct(primary), _pct(secondary)
+    pd, sd = _dur(primary), _dur(secondary)
+    if pd and sd and pd > sd:
+        sp, wp       = wp, sp
+        primary, secondary = secondary, primary
+
+    return {
+        "session_pct":   sp,
+        "weekly_pct":    wp,
+        "session_reset": _reset(primary),
+        "weekly_reset":  _reset(secondary),
+        "plan":          (payload.get("plan_type") or ""),
+        "error":         None,
+    }
+
+
+def codex_fetch(session_token: str) -> dict:
+    """Cached fetch. session_token = '' means not configured."""
+    if not session_token:
+        return {"error": "no token - right-click: Set Codex token",
+                "session_pct": None, "weekly_pct": None}
+    now = time.time()
+    if now - _CODEX_CACHE["ts"] < _CODEX_TTL and _CODEX_CACHE["data"] is not None:
+        return _CODEX_CACHE["data"]
+    try:
+        result = _codex_fetch_fresh(session_token)
+    except Exception as e:
+        result = {"error": str(e)[:60], "session_pct": None, "weekly_pct": None}
+    _CODEX_CACHE["ts"]   = now
+    _CODEX_CACHE["data"] = result
+    return result
 
 
 # --------------------------------------------------------------------------
@@ -363,7 +480,8 @@ def fmt_cost(c):
 # Settings
 # --------------------------------------------------------------------------
 def load_settings():
-    base = {"x": None, "y": None, "topmost": True, "metric": "cost", "days": 14}
+    base = {"x": None, "y": None, "topmost": True, "metric": "cost", "days": 14,
+            "codex_session_token": ""}
     try:
         with open(SETTINGS_FILE) as f:
             base.update(json.load(f))
@@ -386,7 +504,7 @@ def save_settings(s):
 def run_gui():
     import tkinter as tk
 
-    W, H = 380, 560
+    W, H = 380, 640
     settings = load_settings()
     data = UsageData()
     result_q = queue.Queue()
@@ -443,7 +561,7 @@ def run_gui():
     close_btn = mk_btn(bar, "✕", lambda: (persist(), root.destroy()),
                        fg=C_SUB)
     close_btn.pack(side="right", padx=(0, 8))
-    refresh_btn = mk_btn(bar, "↻", lambda: trigger_refresh())
+    refresh_btn = mk_btn(bar, "↻", lambda: (trigger_refresh(), trigger_codex_refresh()))
     refresh_btn.pack(side="right")
     pin_btn = mk_btn(bar, "", None)
     pin_btn.pack(side="right")
@@ -517,6 +635,106 @@ def run_gui():
              font=("Segoe UI", 7)).pack(anchor="w", padx=14, pady=(2, 0))
     models_box = tk.Frame(root, bg=C_BG)
     models_box.pack(fill="x", padx=14, pady=(2, 4))
+
+    # ---- Codex section -------------------------------------------------------
+    tk.Frame(root, bg=C_FAINT, height=1).pack(fill="x", padx=14, pady=(6, 0))
+    codex_hdr_row = tk.Frame(root, bg=C_BG)
+    codex_hdr_row.pack(fill="x", padx=14, pady=(4, 0))
+    tk.Label(codex_hdr_row, text="CODEX", bg=C_BG, fg=C_SUB,
+             font=("Segoe UI", 7)).pack(side="left")
+    codex_plan_lbl = tk.Label(codex_hdr_row, text="", bg=C_BG, fg=C_FAINT,
+                               font=("Segoe UI", 7))
+    codex_plan_lbl.pack(side="left", padx=(6, 0))
+    codex_err_lbl = tk.Label(codex_hdr_row, text="", bg=C_BG, fg=C_RED,
+                              font=("Segoe UI", 7))
+    codex_err_lbl.pack(side="right")
+
+    codex_q = queue.Queue()
+
+    def _make_codex_bar(label_text, bar_color):
+        row = tk.Frame(root, bg=C_BG)
+        row.pack(fill="x", padx=14, pady=(2, 2))
+        tk.Label(row, text=label_text, bg=C_BG, fg=C_SUB,
+                 font=("Segoe UI", 7), width=8, anchor="w").pack(side="left")
+        track = tk.Frame(row, bg=C_SURFACE, height=10)
+        track.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        track.pack_propagate(False)
+        fill = tk.Frame(track, bg=bar_color, height=10)
+        fill.place(relwidth=0.0, relheight=1.0)
+        pct = tk.Label(row, text="--", bg=C_BG, fg=C_FAINT,
+                       font=("Segoe UI", 7), width=5, anchor="e")
+        pct.pack(side="left")
+        eta = tk.Label(row, text="", bg=C_BG, fg=C_FAINT,
+                       font=("Segoe UI", 7), width=12, anchor="e")
+        eta.pack(side="right")
+        return fill, pct, eta
+
+    cx_sess_fill, cx_sess_pct, cx_sess_eta = _make_codex_bar("SESSION", C_PEACH)
+    cx_week_fill, cx_week_pct, cx_week_eta = _make_codex_bar("WEEKLY",  C_MAUVE)
+
+    state["codex"] = None
+
+    def _bg_codex_refresh():
+        tok = settings.get("codex_session_token", "")
+        codex_q.put(codex_fetch(tok))
+
+    def trigger_codex_refresh():
+        threading.Thread(target=_bg_codex_refresh, daemon=True).start()
+
+    def render_codex(cd):
+        state["codex"] = cd
+        if cd.get("error"):
+            short_err = cd["error"][:40]
+            codex_err_lbl.configure(text=short_err)
+            cx_sess_fill.place(relwidth=0.0, relheight=1.0)
+            cx_week_fill.place(relwidth=0.0, relheight=1.0)
+            cx_sess_pct.configure(text="--", fg=C_FAINT)
+            cx_week_pct.configure(text="--", fg=C_FAINT)
+            codex_plan_lbl.configure(text="")
+        else:
+            codex_err_lbl.configure(text="")
+            plan = cd.get("plan") or ""
+            codex_plan_lbl.configure(text=plan.capitalize() if plan else "")
+            sp = cd.get("session_pct")
+            if sp is not None:
+                cx_sess_fill.place(relwidth=min(1.0, sp / 100), relheight=1.0)
+                cx_sess_pct.configure(text=f"{sp:.0f}%", fg=C_PEACH)
+            else:
+                cx_sess_fill.place(relwidth=0.0, relheight=1.0)
+                cx_sess_pct.configure(text="--", fg=C_FAINT)
+            wp = cd.get("weekly_pct")
+            if wp is not None:
+                cx_week_fill.place(relwidth=min(1.0, wp / 100), relheight=1.0)
+                cx_week_pct.configure(text=f"{wp:.0f}%", fg=C_MAUVE)
+            else:
+                cx_week_fill.place(relwidth=0.0, relheight=1.0)
+                cx_week_pct.configure(text="--", fg=C_FAINT)
+
+    def poll_codex_queue():
+        try:
+            while True:
+                cd = codex_q.get_nowait()
+                render_codex(cd)
+        except queue.Empty:
+            pass
+        root.after(500, poll_codex_queue)
+
+    def codex_tick():
+        cd = state.get("codex") or {}
+        if cd:
+            sr = cd.get("session_reset")
+            if sr:
+                r = sr - time.time()
+                cx_sess_eta.configure(
+                    text=(_fmt_countdown(r) if r > 0 else "reset!"),
+                    fg=(C_PEACH if r > 0 else C_GREEN))
+            wr = cd.get("weekly_reset")
+            if wr:
+                r = wr - time.time()
+                cx_week_eta.configure(
+                    text=(_fmt_countdown(r) if r > 0 else "reset!"),
+                    fg=(C_MAUVE if r > 0 else C_GREEN))
+        root.after(1000, codex_tick)
 
     # ---- session / weekly tracking ----------------------------------------
     tk.Frame(root, bg=C_FAINT, height=1).pack(fill="x", padx=14, pady=(6, 0))
@@ -733,6 +951,23 @@ def run_gui():
                    activebackground=C_ACCENT, activeforeground=C_BG,
                    relief="flat", bd=0, font=("Segoe UI", 9))
 
+    def set_codex_token():
+        import tkinter.simpledialog as sd
+        msg = (
+            "Paste __Secure-next-auth.session-token from ChatGPT.\n\n"
+            "How: chatgpt.com -> F12 -> Application -> Cookies\n"
+            "-> .chatgpt.com -> __Secure-next-auth.session-token\n"
+            "(concatenate .0 + .1 if split)"
+        )
+        tok = sd.askstring("Codex session token", msg,
+                           initialvalue=settings.get("codex_session_token", ""),
+                           parent=root)
+        if tok is not None:
+            settings["codex_session_token"] = tok.strip()
+            _CODEX_CACHE["ts"] = 0  # invalidate cache
+            persist()
+            trigger_codex_refresh()
+
     def rebuild_menu():
         menu.delete(0, "end")
         menu.add_command(
@@ -753,6 +988,11 @@ def run_gui():
             menu.add_command(
                 label=f'Range: {dval} days{"  v" if state["days"] == dval else ""}',
                 command=lambda d=dval: set_days(d))
+        menu.add_separator()
+        has_tok = bool(settings.get("codex_session_token"))
+        menu.add_command(
+            label=f'Codex token: {"set  v" if has_tok else "not set"}',
+            command=set_codex_token)
         menu.add_separator()
         menu.add_command(label="Quit", command=lambda: (persist(),
                                                         root.destroy()))
@@ -782,9 +1022,12 @@ def run_gui():
                                     else "cost"))
 
     _tick()
+    codex_tick()
 
     poll_queue()
+    poll_codex_queue()
     auto_refresh()
+    trigger_codex_refresh()
 
     if "--smoke" in sys.argv:
         # Build UI, render once, then self-close. Used for headless verify.
