@@ -1,5 +1,7 @@
 # AI Usage Counter
 
+> **Windows port available** — see [`windows/`](windows/) for a Python tkinter widget that runs on Windows 10/11 with no dependencies (stdlib only). Reads the same `~/.claude` logs as this app.
+
 A macOS menu bar app for tracking AI usage limits across Claude, Codex, Gemini, and Antigravity in one place.
 
 The app shows current session usage, weekly usage, reset times, and provider-specific quota groups without needing to keep each provider settings page open.
