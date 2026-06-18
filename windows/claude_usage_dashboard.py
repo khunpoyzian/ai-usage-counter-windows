@@ -511,7 +511,7 @@ def save_settings(s):
 def run_gui():
     import tkinter as tk
 
-    W, H = 380, 640
+    W, H = 400, 660
     settings = load_settings()
     data = UsageData()
     result_q = queue.Queue()
@@ -632,7 +632,7 @@ def run_gui():
                           bg=C_BG, fg=C_FAINT, font=("Segoe UI", 8))
     chart_hint.pack(side="right")
 
-    CH_W, CH_H = 352, 132
+    CH_W, CH_H = W - 28, 132
     chart = tk.Canvas(root, width=CH_W, height=CH_H, bg=C_BG,
                       highlightthickness=0)
     chart.pack(padx=14, pady=(2, 6))
