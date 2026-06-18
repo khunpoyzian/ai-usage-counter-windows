@@ -56,8 +56,7 @@ MODEL_COLORS = {
 # --------------------------------------------------------------------------
 # Codex (ChatGPT) usage
 # --------------------------------------------------------------------------
-# Auth: reads Codex login from ~/.codex/auth.json. Manual ChatGPT cookie still
-# works as a fallback via the "codex_session_token" key in SETTINGS_FILE.
+# Auth: reads Codex login from ~/.codex/auth.json.
 _CODEX_CACHE = {"ts": 0.0, "data": None}
 _CODEX_TTL   = 300  # 5 min
 
@@ -73,20 +72,13 @@ def _codex_local_access_token() -> str:
         return ""
 
 
-def _codex_fetch_fresh(session_token: str) -> dict:
+def _codex_fetch_fresh() -> dict:
     hdrs = {
         "User-Agent": _UA,
         "Accept": "application/json",
         "Referer": "https://chatgpt.com/",
     }
     access_tok = _codex_local_access_token()
-    if not access_tok and session_token:
-        hdrs["Cookie"] = f"__Secure-next-auth.session-token={session_token}"
-        req = urllib.request.Request("https://chatgpt.com/api/auth/session",
-                                     headers=hdrs)
-        with urllib.request.urlopen(req, timeout=10) as r:
-            sess = json.loads(r.read())
-        access_tok = sess.get("accessToken")
     if not access_tok:
         return {"error": "no Codex auth - run codex login"}
 
@@ -161,13 +153,13 @@ def _codex_fetch_fresh(session_token: str) -> dict:
     }
 
 
-def codex_fetch(session_token: str) -> dict:
-    """Cached fetch. Empty session_token uses ~/.codex/auth.json."""
+def codex_fetch() -> dict:
+    """Cached fetch from local Codex auth."""
     now = time.time()
     if now - _CODEX_CACHE["ts"] < _CODEX_TTL and _CODEX_CACHE["data"] is not None:
         return _CODEX_CACHE["data"]
     try:
-        result = _codex_fetch_fresh(session_token)
+        result = _codex_fetch_fresh()
     except Exception as e:
         result = {"error": str(e)[:60], "session_pct": None, "weekly_pct": None}
     _CODEX_CACHE["ts"]   = now
@@ -487,14 +479,13 @@ def fmt_cost(c):
 # Settings
 # --------------------------------------------------------------------------
 def load_settings():
-    base = {"x": None, "y": None, "topmost": True, "metric": "cost", "days": 14,
-            "codex_session_token": ""}
+    base = {"x": None, "y": None, "topmost": True, "metric": "cost", "days": 14}
     try:
         with open(SETTINGS_FILE) as f:
             base.update(json.load(f))
     except Exception:
         pass
-    return base
+    return {k: base[k] for k in ("x", "y", "topmost", "metric", "days")}
 
 
 def save_settings(s):
@@ -682,8 +673,7 @@ def run_gui():
     state["codex"] = None
 
     def _bg_codex_refresh():
-        tok = settings.get("codex_session_token", "")
-        codex_q.put(codex_fetch(tok))
+        codex_q.put(codex_fetch())
 
     def trigger_codex_refresh():
         threading.Thread(target=_bg_codex_refresh, daemon=True).start()
@@ -958,24 +948,6 @@ def run_gui():
                    activebackground=C_ACCENT, activeforeground=C_BG,
                    relief="flat", bd=0, font=("Segoe UI", 9))
 
-    def set_codex_token():
-        import tkinter.simpledialog as sd
-        msg = (
-            "Optional fallback. Usually this uses ~/.codex/auth.json automatically.\n\n"
-            "Paste __Secure-next-auth.session-token from ChatGPT if auto auth fails.\n\n"
-            "How: chatgpt.com -> F12 -> Application -> Cookies\n"
-            "-> .chatgpt.com -> __Secure-next-auth.session-token\n"
-            "(concatenate .0 + .1 if split)"
-        )
-        tok = sd.askstring("Codex session token", msg,
-                           initialvalue=settings.get("codex_session_token", ""),
-                           parent=root)
-        if tok is not None:
-            settings["codex_session_token"] = tok.strip()
-            _CODEX_CACHE["ts"] = 0  # invalidate cache
-            persist()
-            trigger_codex_refresh()
-
     def rebuild_menu():
         menu.delete(0, "end")
         menu.add_command(
@@ -996,16 +968,6 @@ def run_gui():
             menu.add_command(
                 label=f'Range: {dval} days{"  v" if state["days"] == dval else ""}',
                 command=lambda d=dval: set_days(d))
-        menu.add_separator()
-        if _codex_local_access_token():
-            auth_state = "auto"
-        elif settings.get("codex_session_token"):
-            auth_state = "manual  v"
-        else:
-            auth_state = "missing"
-        menu.add_command(
-            label=f"Codex auth: {auth_state}",
-            command=set_codex_token)
         menu.add_separator()
         menu.add_command(label="Quit", command=lambda: (persist(),
                                                         root.destroy()))
